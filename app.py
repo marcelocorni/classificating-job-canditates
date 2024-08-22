@@ -2,19 +2,24 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+
+from sklearn.neighbors import KNeighborsClassifier
+from xgboost import XGBClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.tree import plot_tree
 import matplotlib.pyplot as pl
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
-from sklearn.metrics import classification_report, accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import classification_report, accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 import plotly.express as px
+import plotly.figure_factory as ff
 from sklearn.decomposition import PCA
 import hashlib
 
 st.set_page_config(page_title='Trabalho 5 - Clasificação', layout='wide')
-st.set_option('deprecation.showPyplotGlobalUse', False)
+
 pl.style.use('dark_background')
 
 st.title("Classificação dos Dados Agrupados de Candidatos a Emprego")
@@ -67,11 +72,11 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 
 # Parâmetros para Árvores de Decisão
 with st.sidebar.expander("Hiperparâmetros - Árvores de Decisão",expanded=False):
-    max_depth_tree = st.slider("Profundidade Máxima", 1, 20, 5, key="max_depth_tree")
-    min_samples_split_tree = st.slider("Mínimo de Amostras para Split", 2, 20, 2, key="min_samples_split_tree")
-    min_samples_leaf_tree = st.slider("Mínimo de Amostras na Folha", 1, 10, 1, key="min_samples_leaf_tree")
+    max_depth_tree = st.slider("Profundidade Máxima", 1, 20, 10, key="max_depth_tree")
+    min_samples_split_tree = st.slider("Mínimo de Amostras para Split", 2, 20, 15, key="min_samples_split_tree")
+    min_samples_leaf_tree = st.slider("Mínimo de Amostras na Folha", 1, 10, 3, key="min_samples_leaf_tree")
     max_features_tree = st.selectbox("Máximo de Features", ['sqrt', 'log2', None], key="max_features_tree")
-    criterion_tree = st.selectbox("Critério", ["gini", "entropy","log_loss"], key="criterion_tree")
+    criterion_tree = st.selectbox("Critério", ["gini", "entropy","log_loss"], index=0, key="criterion_tree")
 
 clf_tree = DecisionTreeClassifier(max_depth=max_depth_tree,
                                   min_samples_split=min_samples_split_tree,
@@ -84,7 +89,7 @@ y_pred_tree = clf_tree.predict(X_test)
 
 # Parâmetros para SVM
 with st.sidebar.expander("Hiperparâmetros - SVM",expanded=False):
-    C_svm = st.slider("C (Regularização)", 0.01, 10.0, 1.0, key="C_svm")
+    C_svm = st.number_input("C (Regularização)", 0.01, 10.0, 0.10, key="C_svm")
     kernel_svm = st.selectbox("Kernel", ['linear', 'poly', 'rbf', 'sigmoid'], key="kernel_svm")
     degree_svm = st.slider("Grau (se kernel for poly)", 2, 5, 3, key="degree_svm")
     gamma_svm = st.selectbox("Gamma", ['scale', 'auto'], key="gamma_svm")
@@ -96,9 +101,9 @@ y_pred_svm = clf_svm.predict(X_test)
 
 # Parâmetros para Random Forest
 with st.sidebar.expander("Hiperparâmetros - Random Forest",expanded=False):
-    n_estimators_rf = st.slider("Número de Árvores (Estimadores)", 10, 200, 100, key="n_estimators_rf")
+    n_estimators_rf = st.slider("Número de Árvores (Estimadores)", 10, 200, 111, key="n_estimators_rf")
     max_depth_rf = st.slider("Profundidade Máxima", 1, 20, 10, key="max_depth_rf")
-    min_samples_split_rf = st.slider("Mínimo de Amostras para Split", 2, 20, 2, key="min_samples_split_rf")
+    min_samples_split_rf = st.slider("Mínimo de Amostras para Split", 2, 20, 4, key="min_samples_split_rf")
     min_samples_leaf_rf = st.slider("Mínimo de Amostras na Folha", 1, 10, 1, key="min_samples_leaf_rf")
     max_features_rf = st.selectbox("Máximo de Features", ['sqrt', 'log2', None], key="max_features_rf")
     criterion_rf = st.selectbox("Critério", ["gini", "entropy","log_loss"], key="criterion_rf")
@@ -119,6 +124,53 @@ y_pred_rf = clf_rf.predict(X_test)
 # Converter as predições para as classes nomeadas
 class_mapping_binary = {0: "NAO_BP", 1: "BP"}
 y_pred_rf_mapped = [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_rf]
+
+# Parâmetros para Logistic Regression
+with st.sidebar.expander("Hiperparâmetros - Logistic Regression", expanded=False):
+    C_lr = st.number_input("C (Regularização Inversa)", 0.01, 10.0, 0.01, key="C_lr")
+    solver_lr = st.selectbox("Solver", ['liblinear', 'lbfgs', 'sag', 'saga', 'newton-cg'], key="solver_lr")
+
+clf_lr = LogisticRegression(C=C_lr, solver=solver_lr, random_state=42)
+clf_lr.fit(X_train, y_train)
+y_pred_lr = clf_lr.predict(X_test)
+
+# Parâmetros para K-Nearest Neighbors
+with st.sidebar.expander("Hiperparâmetros - KNN", expanded=False):
+    n_neighbors_knn = st.slider("Número de Vizinhos (K)", 1, 20, 10, key="n_neighbors_knn")
+    weights_knn = st.selectbox("Pesos", ['uniform', 'distance'], key="weights_knn")
+    algorithm_knn = st.selectbox("Algoritmo", ['auto', 'ball_tree', 'kd_tree', 'brute'], key="algorithm_knn")
+
+clf_knn = KNeighborsClassifier(n_neighbors=n_neighbors_knn, weights=weights_knn, algorithm=algorithm_knn)
+clf_knn.fit(X_train, y_train)
+y_pred_knn = clf_knn.predict(X_test)
+
+# Converter as predições para as classes nomeadas
+y_pred_lr_mapped = [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_lr]
+y_pred_knn_mapped = [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_knn]
+
+
+# Parâmetros para XGBoost
+with st.sidebar.expander("Hiperparâmetros - XGBoost", expanded=False):
+    n_estimators_xgb = st.slider("Número de Árvores (Estimadores)", 50, 500, 100, key="n_estimators_xgb")
+    learning_rate_xgb = st.number_input("Taxa de Aprendizado", 0.01, 0.5, 0.25, key="learning_rate_xgb")
+    max_depth_xgb = st.slider("Profundidade Máxima", 1, 15, 4, key="max_depth_xgb")
+    colsample_bytree_xgb = st.number_input("Amostragem de Colunas por Árvore", 0.1, 1.0, 0.90, key="colsample_bytree_xgb")
+    subsample_xgb = st.number_input("Amostragem de Filas", 0.1, 1.0, 0.8, key="subsample_xgb")
+
+clf_xgb = XGBClassifier(n_estimators=n_estimators_xgb,
+                        learning_rate=learning_rate_xgb,
+                        max_depth=max_depth_xgb,
+                        colsample_bytree=colsample_bytree_xgb,
+                        subsample=subsample_xgb,
+                        random_state=42)
+
+clf_xgb.fit(X_train, y_train)
+y_pred_xgb = clf_xgb.predict(X_test)
+
+# Converter as predições para as classes nomeadas
+y_pred_xgb_mapped = [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_xgb]
+
+
 
 
 # Função para aplicar cores com base nos valores
@@ -429,41 +481,315 @@ with st.expander("Random Forest", expanded=False):
         st.pyplot(fig)
 
 
+# Logistic Regression
+with st.expander("Logistic Regression", expanded=False):
+    col1, col2 = st.columns(2)
+    report_lr = classification_report(y_test, y_pred_lr)
+    df_lr = classification_report_to_df(report_lr)
+    accuracy_lr = accuracy_score(y_test, y_pred_lr)
+    precision_lr = precision_score(y_test, y_pred_lr, average='weighted')
+    recall_lr = recall_score(y_test, y_pred_lr, average='weighted')
+    f1_lr = f1_score(y_test, y_pred_lr, average='weighted')
+    df_lr_styled = df_lr.style.applymap(color_metric, subset=['precision', 'recall', 'f1-score'])
+    
+    with col1:
+        st.subheader("Resultados")
+        st.dataframe(df_lr_styled)
+        st.write(f'Acurácia: {styled_metric_text(accuracy_lr, "")}', unsafe_allow_html=True)
+        st.write(f'Precisão: {styled_metric_text(precision_lr, "")}', unsafe_allow_html=True)
+        st.write(f'Recall: {styled_metric_text(recall_lr, "")}', unsafe_allow_html=True)
+        st.write(f'F1-Score: {styled_metric_text(f1_lr, "")}', unsafe_allow_html=True)
+
+        st.write("### Parâmetros do Modelo")
+        st.write(clf_lr.get_params())
+
+        # Importância das Features usando Coeficientes
+        coef_lr = clf_lr.coef_.flatten()
+        indices_lr = np.argsort(np.abs(coef_lr))[::-1]  # Ordenar pela importância absoluta dos coeficientes
+
+        # Criar DataFrame para exibir as features com sua importância
+        feature_importance_df_lr = pd.DataFrame({
+            'Feature': X.columns[indices_lr],
+            'Coeficiente': coef_lr[indices_lr]
+        })
+
+        # Exibir o DataFrame de importância das features
+        st.write("### Importância das Features (Coeficientes)")
+        st.dataframe(feature_importance_df_lr)
+
+    with col2:
+        fig_lr = px.scatter(x=X_test_pca[:, 0], y=X_test_pca[:, 1], color=y_pred_lr_mapped,
+                            labels={'x': 'PC1', 'y': 'PC2', 'color': 'Classe Predita'},
+                            title="Logistic Regression - Dispersão das Classes Preditas",
+                            color_discrete_map=color_discrete_map_binary)
+        
+        st.plotly_chart(fig_lr)
+
+        fig_lr_dist = px.histogram(
+            x=y_pred_lr_mapped,
+            labels={'x': 'Classe Predita', 'y': 'Contagem'},
+            title="Logistic Regression - Distribuição das Classes Preditas"
+        )
+        st.plotly_chart(fig_lr_dist)
+
+        # Gráfico de barras para visualização
+        fig, ax = pl.subplots(figsize=(10, 6))
+        ax.barh(feature_importance_df_lr['Feature'], feature_importance_df_lr['Coeficiente'], color='blue')
+        ax.set_xlabel('Coeficiente')
+        ax.set_title('Importância das Features na Logistic Regression')
+        ax.invert_yaxis()  # Para que a feature mais importante apareça no topo
+        st.pyplot(fig)
+
+# K-Nearest Neighbors
+with st.expander("K-Nearest Neighbors", expanded=False):
+    col1, col2 = st.columns(2)
+    report_knn = classification_report(y_test, y_pred_knn)
+    df_knn = classification_report_to_df(report_knn)
+    accuracy_knn = accuracy_score(y_test, y_pred_knn)
+    precision_knn = precision_score(y_test, y_pred_knn, average='weighted')
+    recall_knn = recall_score(y_test, y_pred_knn, average='weighted')
+    f1_knn = f1_score(y_test, y_pred_knn, average='weighted')
+    df_knn_styled = df_knn.style.applymap(color_metric, subset=['precision', 'recall', 'f1-score'])
+
+    with col1:
+        st.subheader("Resultados")
+        st.dataframe(df_knn_styled)
+        st.write(f'Acurácia: {styled_metric_text(accuracy_knn, "")}', unsafe_allow_html=True)
+        st.write(f'Precisão: {styled_metric_text(precision_knn, "")}', unsafe_allow_html=True)
+        st.write(f'Recall: {styled_metric_text(recall_knn, "")}', unsafe_allow_html=True)
+        st.write(f'F1-Score: {styled_metric_text(f1_knn, "")}', unsafe_allow_html=True)
+
+        st.write("### Parâmetros do Modelo")
+        st.write(clf_knn.get_params())
+
+    with col2:
+        fig_knn = px.scatter(x=X_test_pca[:, 0], y=X_test_pca[:, 1], color=y_pred_knn_mapped,
+                            labels={'x': 'PC1', 'y': 'PC2', 'color': 'Classe Predita'},
+                            title="K-Nearest Neighbors - Dispersão das Classes Preditas",
+                            color_discrete_map=color_discrete_map_binary)
+        
+        st.plotly_chart(fig_knn)
+
+        fig_knn_dist = px.histogram(
+            x=y_pred_knn_mapped,
+            labels={'x': 'Classe Predita', 'y': 'Contagem'},
+            title="K-Nearest Neighbors - Distribuição das Classes Preditas"
+        )
+        st.plotly_chart(fig_knn_dist)
+
+# XGBoost
+with st.expander("XGBoost", expanded=False):
+    col1, col2 = st.columns(2)
+    report_xgb = classification_report(y_test, y_pred_xgb)
+    df_xgb = classification_report_to_df(report_xgb)
+    accuracy_xgb = accuracy_score(y_test, y_pred_xgb)
+    precision_xgb = precision_score(y_test, y_pred_xgb, average='weighted')
+    recall_xgb = recall_score(y_test, y_pred_xgb, average='weighted')
+    f1_xgb = f1_score(y_test, y_pred_xgb, average='weighted')
+    df_xgb_styled = df_xgb.style.applymap(color_metric, subset=['precision', 'recall', 'f1-score'])
+
+    with col1:
+        st.subheader("Resultados")
+        st.dataframe(df_xgb_styled)
+        st.write(f'Acurácia: {styled_metric_text(accuracy_xgb, "")}', unsafe_allow_html=True)
+        st.write(f'Precisão: {styled_metric_text(precision_xgb, "")}', unsafe_allow_html=True)
+        st.write(f'Recall: {styled_metric_text(recall_xgb, "")}', unsafe_allow_html=True)
+        st.write(f'F1-Score: {styled_metric_text(f1_xgb, "")}', unsafe_allow_html=True)
+
+        st.write("### Parâmetros do Modelo")
+        st.write(clf_xgb.get_params())
+
+        # Obter a importância das features
+        importances_xgb = clf_xgb.feature_importances_
+        indices_xgb = np.argsort(importances_xgb)[::-1]  # Ordenar as features pela importância
+
+        # Criar um DataFrame para exibir as features com sua importância
+        feature_importance_df_xgb = pd.DataFrame({
+            'Feature': X.columns[indices_xgb],
+            'Importância': importances_xgb[indices_xgb]
+        })
+
+        # Exibir o DataFrame de importância das features
+        st.write("### Importância das Features")
+        st.dataframe(feature_importance_df_xgb)
+
+    with col2:
+        fig_xgb = px.scatter(x=X_test_pca[:, 0], y=X_test_pca[:, 1], color=y_pred_xgb_mapped,
+                            labels={'x': 'PC1', 'y': 'PC2', 'color': 'Classe Predita'},
+                            title="XGBoost - Dispersão das Classes Preditas",
+                            color_discrete_map=color_discrete_map_binary)
+        
+        st.plotly_chart(fig_xgb)
+
+        fig_xgb_dist = px.histogram(
+            x=y_pred_xgb_mapped,
+            labels={'x': 'Classe Predita', 'y': 'Contagem'},
+            title="XGBoost - Distribuição das Classes Preditas"
+        )
+        st.plotly_chart(fig_xgb_dist)
+
+        # Gráfico de barras para visualização
+        fig, ax = pl.subplots(figsize=(10, 6))
+        ax.barh(feature_importance_df_xgb['Feature'], feature_importance_df_xgb['Importância'], color='orange')
+        ax.set_xlabel('Importância')
+        ax.set_title('Importância das Features no XGBoost')
+        ax.invert_yaxis()  # Para que a feature mais importante apareça no topo
+        st.pyplot(fig)
+
 with st.expander("Comparação dos Classificadores", expanded=False):
-    # Comparação da distribuição das classes preditas pelos três classificadores
 
-    fig_comparison = px.histogram(comparison_data, barmode='group', color_discrete_map=color_discrete_map_binary,
-                                labels={'value': 'Classe Predita', 'variable': 'Classificador'},
-                                title="Distribuição das Classes Preditas")
-    st.plotly_chart(fig_comparison)
+    #Definir o mapa de cores para os classificadores
+    color_discrete_map_classificadores = {
+        "Árvores de Decisão": "rgb(124, 108, 119)",
+        "SVM": "rgb(170, 166, 148)",
+        "Random Forest": "rgb(209, 208, 163)",
+        "Logistic Regression": "rgb(235, 248, 184)",
+        "KNN": "rgb(255, 231, 135)",
+        "XGBoost": "rgb(128, 143, 133)"
+    }
 
-
-    # Tabela de comparação das previsões
-    comparison_df = pd.DataFrame({
-        'Real': [class_mapping_binary.get(real, "Desconhecido") for real in y_test],
+    # Atualizar a comparação da distribuição das classes preditas pelos classificadores
+    comparison_data = pd.DataFrame({
         'Árvores de Decisão': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_tree],
         'SVM': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_svm],
-        'Random Forest': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_rf]
+        'Random Forest': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_rf],
+        'Logistic Regression': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_lr],
+        'KNN': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_knn],
+        'XGBoost': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_xgb]
     })
+   
 
-    # Aplicar a formatação condicional
-    comparison_styled = comparison_df.style.apply(lambda x: ['background-color: red' if x[col] != x['Real'] else '' 
-                                                            for col in x.index], axis=1)
+    # Gráfico de barras empilhadas para comparação das predições
+    fig_comparison = px.histogram(comparison_data, barmode='group', 
+                                  labels={'value': 'Classe Predita', 'variable': 'Classificador'},
+                                  title="Distribuição das Classes Preditas por Diferentes Classificadores",
+                                  color_discrete_map=color_discrete_map_classificadores)
+    st.plotly_chart(fig_comparison)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        # Aplicar a formatação condicional
+        def apply_styles(x):
+            # Inicializar uma lista para armazenar os estilos
+            styles = ['' for _ in range(len(x))]
+
+            # Iterar sobre as colunas
+            for i, col in enumerate(x.index):
+                if col == 'Real':
+                    styles[i] = 'color: blue'  # Coluna 'Real' em azul
+                elif x[col] == x['Real']:
+                    styles[i] = 'color: green'  # Valores corretos em verde
+                else:
+                    styles[i] = 'color: red'  # Valores errados em vermelho
+            return styles
+        
+        # Tabela de comparação das previsões
+        comparison_df = pd.DataFrame({
+            'Real': [class_mapping_binary.get(real, "Desconhecido") for real in y_test],
+            'Árvores de Decisão': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_tree],
+            'SVM': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_svm],
+            'Random Forest': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_rf],
+            'Logistic Regression': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_lr],
+            'KNN': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_knn],
+            'XGBoost': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_xgb]
+        })
+        
+        # Aplicar os estilos ao DataFrame
+        comparison_styled = comparison_df.style.apply(apply_styles, axis=1)
+        
+        st.write("### Tabela de Comparação das Previsões")
+        st.dataframe(comparison_styled)
+    with col2:
+        # Cálculo do percentual de erro para cada classificador
+        total_samples = len(y_test)
+        error_tree = sum(comparison_df['Árvores de Decisão'] != comparison_df['Real']) / total_samples * 100
+        error_svm = sum(comparison_df['SVM'] != comparison_df['Real']) / total_samples * 100
+        error_rf = sum(comparison_df['Random Forest'] != comparison_df['Real']) / total_samples * 100
+        error_lr = sum(comparison_df['Logistic Regression'] != comparison_df['Real']) / total_samples * 100
+        error_knn = sum(comparison_df['KNN'] != comparison_df['Real']) / total_samples * 100
+        error_xgb = sum(comparison_df['XGBoost'] != comparison_df['Real']) / total_samples * 100
+
+        # Exibir os percentuais de erro
+        st.write(f"### Percentual de Erro")
+        st.write(f"- Árvores de Decisão: **{error_tree:.2f}%**")
+        st.write(f"- SVM: **{error_svm:.2f}%**")
+        st.write(f"- Random Forest: **{error_rf:.2f}%**")
+        st.write(f"- Logistic Regression: **{error_lr:.2f}%**")
+        st.write(f"- KNN: **{error_knn:.2f}%**")
+        st.write(f"- XGBoost: **{error_xgb:.2f}%**")
+
+    # Comparativo de F1-Score entre os classificadores
+    f1_scores = {
+        'Árvores de Decisão': f1_tree,
+        'SVM': f1_svm,
+        'Random Forest': f1_rf,
+        'Logistic Regression': f1_lr,
+        'KNN': f1_knn,
+        'XGBoost': f1_xgb
+    }
     
-    st.write("### Tabela de Comparação das Previsões")
-    st.dataframe(comparison_styled)
+    f1_score_df = pd.DataFrame(list(f1_scores.items()), columns=['Classificador', 'F1-Score'])
 
-    # Cálculo do percentual de erro para cada classificador
-    total_samples = len(y_test)
-    error_tree = sum(comparison_df['Árvores de Decisão'] != comparison_df['Real']) / total_samples * 100
-    error_svm = sum(comparison_df['SVM'] != comparison_df['Real']) / total_samples * 100
-    error_rf = sum(comparison_df['Random Forest'] != comparison_df['Real']) / total_samples * 100
+    fig_f1_score = px.bar(f1_score_df.sort_values(by='F1-Score', ascending=False), x='Classificador', y='F1-Score', color='Classificador',
+                          title="Comparativo do F1-Score entre os Classificadores",
+                          color_discrete_map=color_discrete_map_classificadores)
+    
+    st.plotly_chart(fig_f1_score)
 
-    # Exibir os percentuais de erro
-    st.write(f"### Percentual de Erro")
-    st.write(f"- Árvores de Decisão: **{error_tree:.2f}%**")
-    st.write(f"- SVM: **{error_svm:.2f}%**")
-    st.write(f"- Random Forest: **{error_rf:.2f}%**")
+
+    #Comparativo de Acurácia entre os classificadores
+    accuracy_scores = {
+        'Árvores de Decisão': accuracy_tree,
+        'SVM': accuracy_svm,
+        'Random Forest': accuracy_rf,
+        'Logistic Regression': accuracy_lr,
+        'KNN': accuracy_knn,
+        'XGBoost': accuracy_xgb
+    }
+
+    accuracy_score_df = pd.DataFrame(list(accuracy_scores.items()), columns=['Classificador', 'Acurácia'])
+
+    fig_accuracy_score = px.bar(accuracy_score_df.sort_values(by='Acurácia', ascending=False), x='Classificador', y='Acurácia', color='Classificador',
+                            title="Comparativo da Acurácia entre os Classificadores",
+                          color_discrete_map=color_discrete_map_classificadores)
+    
+    st.plotly_chart(fig_accuracy_score)
+
+    #Comparativo de Precisão entre os classificadores
+    precision_scores = {
+        'Árvores de Decisão': precision_tree,
+        'SVM': precision_svm,
+        'Random Forest': precision_rf,
+        'Logistic Regression': precision_lr,
+        'KNN': precision_knn,
+        'XGBoost': precision_xgb
+    }
+
+    precision_score_df = pd.DataFrame(list(precision_scores.items()), columns=['Classificador', 'Precisão'])
+
+    fig_precision_score = px.bar(precision_score_df.sort_values(by='Precisão', ascending=False), x='Classificador', y='Precisão', color='Classificador',
+                            title="Comparativo da Precisão entre os Classificadores",
+                          color_discrete_map=color_discrete_map_classificadores)
+    
+    st.plotly_chart(fig_precision_score)
+
+    #Comparativo de Recall entre os classificadores
+    recall_scores = {
+        'Árvores de Decisão': recall_tree,
+        'SVM': recall_svm,
+        'Random Forest': recall_rf,
+        'Logistic Regression': recall_lr,
+        'KNN': recall_knn,
+        'XGBoost': recall_xgb
+    }
+
+    recall_score_df = pd.DataFrame(list(recall_scores.items()), columns=['Classificador', 'Recall'])
+
+    fig_recall_score = px.bar(recall_score_df.sort_values(by='Recall', ascending=False), x='Classificador', y='Recall', color='Classificador',
+                            title="Comparativo do Recall entre os Classificadores",
+                          color_discrete_map=color_discrete_map_classificadores)
+    
+    st.plotly_chart(fig_recall_score)
 
 with st.expander("Playground", expanded=False):
     # Captura de valores numéricos para cada feature usando sliders
@@ -509,28 +835,18 @@ with st.expander("Playground", expanded=False):
         # Aplicar o StandardScaler
         new_instance_scaled = scaler.transform(new_instance_log)
 
-        # Fazer a predição com os dados transformados
+        # Fazer a predição com os dados transformados para todos os classificadores
         pred_tree = clf_tree.predict(new_instance_scaled)[0]
         pred_svm = clf_svm.predict(new_instance_scaled)[0]
         pred_rf = clf_rf.predict(new_instance_scaled)[0]
+        pred_lr = clf_lr.predict(new_instance_scaled)[0]
+        pred_knn = clf_knn.predict(new_instance_scaled)[0]
+        pred_xgb = clf_xgb.predict(new_instance_scaled)[0]
 
+        # Exibir as predições de cada classificador
         st.write(f'Árvores de Decisão prevê: {styled_metric_text_classes(class_mapping_binary[pred_tree], "")}', unsafe_allow_html=True)
         st.write(f'SVM prevê: {styled_metric_text_classes(class_mapping_binary[pred_svm], "")}', unsafe_allow_html=True)
         st.write(f'Random Forest prevê: {styled_metric_text_classes(class_mapping_binary[pred_rf], "")}', unsafe_allow_html=True)
-
-
-
-with st.expander('Conclusão', expanded=False):
-    st.write("""
-    A análise dos resultados dos três classificadores — Árvores de Decisão, SVM e Random Forest — revela comportamentos distintos em relação à predição das classes, destacando as forças e limitações de cada método.
-
-    - **Árvores de Decisão**: Este classificador mostrou-se eficaz em termos de interpretabilidade, permitindo compreender claramente o processo de decisão. No entanto, observamos que ele tende a apresentar dificuldades em capturar padrões mais complexos nos dados, o que pode ter levado a um percentual de erro mais elevado em certas classes. Esse comportamento reflete uma possível tendência ao overfitting em situações onde os dados não seguem regras simples e bem definidas.
-
-    - **SVM (Support Vector Machine)**: O SVM destacou-se por sua capacidade de lidar com margens de decisão bem definidas, o que resultou em um desempenho robusto nas classes analisadas. No entanto, a análise dos resultados mostra que a sensibilidade do SVM à escolha dos hiperparâmetros pode impactar significativamente o desempenho, tornando o processo de ajuste fino crucial para a obtenção de bons resultados. Embora menos interpretável que as Árvores de Decisão, o SVM conseguiu capturar padrões complexos de forma eficaz, resultando em um menor percentual de erro em comparação com as Árvores de Decisão.
-
-    - **Random Forest**: Este classificador apresentou um equilíbrio notável entre acurácia e interpretabilidade. A utilização de múltiplas árvores (ensembles) ajudou a melhorar a precisão das predições e a reduzir a variabilidade do modelo. Em nossas análises, o Random Forest se mostrou particularmente robusto, mantendo um percentual de erro competitivo e, em muitos casos, inferior ao dos outros classificadores. Sua capacidade de evitar o overfitting ao combinar os resultados de várias árvores o torna uma escolha poderosa, especialmente em contextos onde a precisão é fundamental.
-
-    ### Desempenho Geral
-    Cada técnica demonstrou pontos fortes específicos, que se refletem nos percentuais de erro observados. O SVM e o Random Forest, em particular, mostraram-se mais eficazes em capturar a complexidade dos dados, resultando em uma melhor performance geral. A escolha entre esses classificadores deve ser guiada pelo contexto específico da aplicação, considerando a necessidade de interpretabilidade, a complexidade dos dados e os requisitos de precisão.
-    """)
-
+        st.write(f'Logistic Regression prevê: {styled_metric_text_classes(class_mapping_binary[pred_lr], "")}', unsafe_allow_html=True)
+        st.write(f'KNN prevê: {styled_metric_text_classes(class_mapping_binary[pred_knn], "")}', unsafe_allow_html=True)
+        st.write(f'XGBoost prevê: {styled_metric_text_classes(class_mapping_binary[pred_xgb], "")}', unsafe_allow_html=True)
