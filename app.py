@@ -1,10 +1,12 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.tree import plot_tree,export_graphviz
-import matplotlib.pyplot as plt
+from sklearn.tree import plot_tree
+import matplotlib.pyplot as pl
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 from sklearn.metrics import classification_report, accuracy_score, precision_score, recall_score, f1_score
 import plotly.express as px
@@ -12,10 +14,10 @@ from sklearn.decomposition import PCA
 import hashlib
 
 st.set_page_config(page_title='Trabalho 5 - Clasificação', layout='wide')
-plt.style.use('dark_background')
+st.set_option('deprecation.showPyplotGlobalUse', False)
+pl.style.use('dark_background')
 
 st.title("Classificação dos Dados Agrupados de Candidatos a Emprego")
-
 
 # Função para gerar o URL do Gravatar a partir do e-mail
 def get_gravatar_url(email, size=100):
@@ -50,60 +52,15 @@ with col2:
     st.write("Agosto/2024")
     st.write("Disciplina: Mineração de Dados")
 
-# Obter o URL do Gravatar
-gravatar_url = get_gravatar_url(email, size)
-
-# Adicionar rótulos específicos de BP, MP, LP
-class_mapping = {0: "BP", 1: "MP", 2: "LP",-1: "Ruído"}
-
-# Função para aplicar cores com base nos valores
-def color_metric(val):
-    if val > 0.75:
-        color = 'green'
-    elif val > 0.6:
-        color = 'orange'
-    else:
-        color = 'red'
-    return f'color: {color}'
-
-# Funções para estilizar as métricas
-def styled_metric_text(metric_value, metric_name):
-    color = color_metric(metric_value)[7:]  # Remove 'color: ' para pegar só a cor
-    return f'<span style="color:{color}; font-weight:bold;">{metric_name} {metric_value:.2f}</span>'
-
-
-# Função para aplicar cores com base nos classes
-def color_metric_classes(str):
-    if str == 'BP':
-        color = 'green'
-    elif str == 'MP':
-        color = 'orange'
-    elif str == 'LP':
-        color = 'red'
-    else:
-        color = 'purple'
-    return f'color: {color}'
-
-# Funções para estilizar as classes
-def styled_metric_text_classes(metric_value, metric_name):
-    color = color_metric_classes(metric_value)[7:]  # Remove 'color: ' para pegar só a cor
-    return f'<span style="color:{color}; font-weight:bold;">{metric_name} {metric_value}</span>'
-
-# Função para estilizar o texto com base nas classes
-def styled_class_text(pred_class):
-    color = color_metric_classes(pred_class)[7:]  # Remove 'color: ' para pegar só a cor
-    return f'<span style="color:{color}; font-weight:bold;">Classe Predita: {pred_class}</span>'
-
-
 # Carregar os dados
-data = pd.read_csv('data/data_for_classification.csv')
-data = data.drop(columns=['cluster_dbscan'])
+data = pd.read_csv('data/dados_normalizados.csv')
+
+# Adicionar nova coluna label para classificação BP ou NAO_BP
+data['label'] = data['performance'].apply(lambda x: 1 if x == 'BP' else 0)
 
 # Remover a coluna 'performance' do DataFrame para não ser incluída no playground
-
-cluster = st.sidebar.selectbox("Escolha o cluster para classificação", ['cluster_kmeans', 'cluster_agglomerative'])
-X = data.drop(columns=['cluster_kmeans', 'cluster_agglomerative', 'performance'])
-y = data[cluster]  # Aqui você pode escolher qual cluster usar como rótulo
+X = data.drop(columns=['performance', 'label'])
+y = data['label']
 
 # Dividir os dados em treino e teste
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -114,7 +71,7 @@ with st.sidebar.expander("Hiperparâmetros - Árvores de Decisão",expanded=Fals
     min_samples_split_tree = st.slider("Mínimo de Amostras para Split", 2, 20, 2, key="min_samples_split_tree")
     min_samples_leaf_tree = st.slider("Mínimo de Amostras na Folha", 1, 10, 1, key="min_samples_leaf_tree")
     max_features_tree = st.selectbox("Máximo de Features", ['sqrt', 'log2', None], key="max_features_tree")
-    criterion_tree = st.selectbox("Critério", ["gini", "entropy"], key="criterion_tree")
+    criterion_tree = st.selectbox("Critério", ["gini", "entropy","log_loss"], key="criterion_tree")
 
 clf_tree = DecisionTreeClassifier(max_depth=max_depth_tree,
                                   min_samples_split=min_samples_split_tree,
@@ -144,6 +101,7 @@ with st.sidebar.expander("Hiperparâmetros - Random Forest",expanded=False):
     min_samples_split_rf = st.slider("Mínimo de Amostras para Split", 2, 20, 2, key="min_samples_split_rf")
     min_samples_leaf_rf = st.slider("Mínimo de Amostras na Folha", 1, 10, 1, key="min_samples_leaf_rf")
     max_features_rf = st.selectbox("Máximo de Features", ['sqrt', 'log2', None], key="max_features_rf")
+    criterion_rf = st.selectbox("Critério", ["gini", "entropy","log_loss"], key="criterion_rf")
     bootstrap_rf = st.selectbox("Bootstrap", [True, False], key="bootstrap_rf")
 
 clf_rf = RandomForestClassifier(n_estimators=n_estimators_rf,
@@ -152,13 +110,49 @@ clf_rf = RandomForestClassifier(n_estimators=n_estimators_rf,
                                 min_samples_leaf=min_samples_leaf_rf,
                                 max_features=max_features_rf,
                                 bootstrap=bootstrap_rf,
+                                criterion=criterion_rf,
                                 random_state=42)
 
 clf_rf.fit(X_train, y_train)
 y_pred_rf = clf_rf.predict(X_test)
 
 # Converter as predições para as classes nomeadas
-y_pred_rf_mapped = [class_mapping.get(pred, "Desconhecido") for pred in y_pred_rf]
+class_mapping_binary = {0: "NAO_BP", 1: "BP"}
+y_pred_rf_mapped = [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_rf]
+
+
+# Função para aplicar cores com base nos valores
+def color_metric(val):
+    if val > 0.75:
+        color = 'green'
+    elif val > 0.6:
+        color = 'orange'
+    else:
+        color = 'red'
+    return f'color: {color}'
+
+# Funções para estilizar as métricas
+def styled_metric_text(metric_value, metric_name):
+    color = color_metric(metric_value)[7:]  # Remove 'color: ' para pegar só a cor
+    return f'<span style="color:{color}; font-weight:bold;">{metric_name} {metric_value:.2f}</span>'
+
+# Função para aplicar cores com base nos classes
+def color_metric_classes(str):
+    if str == 'BP':
+        color = 'green'
+    elif str == 'MP':
+        color = 'orange'
+    elif str == 'LP':
+        color = 'red'
+    else:
+        color = 'purple'
+    return f'color: {color}'
+
+# Funções para estilizar as classes
+def styled_metric_text_classes(metric_value, metric_name):
+    color = color_metric_classes(metric_value)[7:]  # Remove 'color: ' para pegar só a cor
+    return f'<span style="color:{color}; font-weight:bold;">{metric_name} {metric_value}</span>'
+
 
 # Função para criar dataframe do classification_report
 def classification_report_to_df(report):
@@ -179,29 +173,25 @@ def classification_report_to_df(report):
     dataframe = pd.DataFrame.from_dict(report_data)
     return dataframe.set_index('class')
 
-
 # Criar gráficos de dispersão 2D para visualizar as classificações
 pca = PCA(n_components=2)
 X_test_pca = pca.fit_transform(X_test)
 
 # Converter as predições para as classes nomeadas
-y_pred_tree_mapped = [class_mapping.get(pred, "Desconhecido") for pred in y_pred_tree]
-y_pred_svm_mapped = [class_mapping.get(pred, "Desconhecido") for pred in y_pred_svm]
+y_pred_tree_mapped = [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_tree]
+y_pred_svm_mapped = [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_svm]
 
 # Definir explicitamente as cores para as classes
-color_discrete_map = {
+color_discrete_map_binary = {
     "BP": "green",
-    "MP": "orange",
-    "LP": "red",
-    "Ruído": "purple"
+    "NAO_BP": "red"
 }
-
 
 # Substituir os números das classes pelos nomes no gráfico de comparação
 comparison_data = pd.DataFrame({
-    'Árvores de Decisão': [class_mapping.get(pred, "Desconhecido") for pred in y_pred_tree],
-    'SVM': [class_mapping.get(pred, "Desconhecido") for pred in y_pred_svm],
-    'Random Forest': [class_mapping.get(pred, "Desconhecido") for pred in y_pred_rf]
+    'Árvores de Decisão': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_tree],
+    'SVM': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_svm],
+    'Random Forest': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_rf]
 })
 
 with st.expander("Árvore de Decisão",expanded=False):
@@ -224,11 +214,25 @@ with st.expander("Árvore de Decisão",expanded=False):
         st.write("### Parâmetros do Modelo")
         st.write(clf_tree.get_params())
 
+        # Obter a importância das features
+        importances_tree = clf_tree.feature_importances_
+        indices_tree = np.argsort(importances_tree)[::-1]  # Ordenar as features pela importância
+
+        # Criar um DataFrame para exibir as features com sua importância
+        feature_importance_df_tree = pd.DataFrame({
+            'Feature': X.columns[indices_tree],
+            'Importância': importances_tree[indices_tree]
+        })
+
+        # Exibir o DataFrame de importância das features
+        st.write("### Importância das Features")
+        st.dataframe(feature_importance_df_tree)
+
     with col2:
         fig_tree = px.scatter(x=X_test_pca[:, 0], y=X_test_pca[:, 1], color=y_pred_tree_mapped,
                             labels={'x': 'PC1', 'y': 'PC2', 'color': 'Classe Predita'},
                             title="Árvores de Decisão - Dispersão das Classes Preditas",
-                            color_discrete_map=color_discrete_map)
+                            color_discrete_map=color_discrete_map_binary)
 
         st.plotly_chart(fig_tree)
 
@@ -236,11 +240,17 @@ with st.expander("Árvore de Decisão",expanded=False):
             x=y_pred_tree_mapped,
             labels={'x': 'Classe Predita', 'y': 'Contagem'},
             title="Árvores de Decisão - Distribuição das Classes Preditas",
-            color_discrete_map=color_discrete_map
         )
-        fig_tree_dist.update_traces(marker=dict(color=[color_discrete_map[c] for c in y_pred_tree_mapped]))
-        fig_tree_dist.update_layout(showlegend=False)  # Remover a legenda
+
         st.plotly_chart(fig_tree_dist)
+
+        # Gráfico de barras para visualização
+        fig, ax = pl.subplots(figsize=(10, 6))
+        ax.barh(feature_importance_df_tree['Feature'], feature_importance_df_tree['Importância'], color='teal')
+        ax.set_xlabel('Importância')
+        ax.set_title('Importância das Features na Árvore de Decisão')
+        ax.invert_yaxis()  # Para que a feature mais importante apareça no topo
+        st.pyplot(fig)
 
     
     max_depth_visualizacao = st.slider(
@@ -251,17 +261,17 @@ with st.expander("Árvore de Decisão",expanded=False):
     )
 
     # Plotar a árvore até o max_depth especificado
-    fig, ax = plt.subplots(figsize=(20, 10))
+    fig, ax = pl.subplots(figsize=(20, 10))
 
     # plot_tree aceita max_depth mas não min_depth, então você verá a árvore a partir da raiz até o max_depth.
     plot_tree(clf_tree, 
             max_depth=max_depth_visualizacao, 
             filled=False, 
             feature_names=X.columns, 
-            class_names=list(class_mapping.values()), 
+            class_names=list(class_mapping_binary.values()), 
             ax=ax)
 
-    plt.title(f"Árvore de Decisão (Níveis: {max_depth_visualizacao})")
+    pl.title(f"Árvore de Decisão (Níveis: {max_depth_visualizacao})")
     st.pyplot(fig)
 
 with st.expander("SVM",expanded=False):
@@ -286,25 +296,51 @@ with st.expander("SVM",expanded=False):
 
         st.write("### Parâmetros do Modelo")
         st.write(clf_svm.get_params())
+
+        if kernel_svm == 'linear':
+            # Análise para SVM Linear usando coeficientes
+            st.write("### Importância das Features no SVM (Kernel Linear)")
+
+            # Obter os coeficientes das features
+            coef = clf_svm.coef_.flatten()  # Achatar o array para facilitar a manipulação
+            indices = np.argsort(np.abs(coef))[::-1]  # Ordenar pela importância absoluta dos coeficientes
+
+            # Criar um DataFrame para exibir as features com sua importância
+            feature_importance_df = pd.DataFrame({
+                'Feature': X.columns[indices],
+                'Coeficiente': coef[indices]
+            })
+
+            # Exibir o DataFrame de importância das features
+            st.write("#### Coeficientes das Features (SVM Linear)")
+            st.dataframe(feature_importance_df)
+        else:
+            st.write("### Importância das Features não disponível para SVM com Kernel não-linear")
+
     with col2:
-        fig_tree.for_each_trace(lambda t: t.update(name=class_mapping[int(t.name)]) if t.name.isdigit() else None)
+        fig_tree.for_each_trace(lambda t: t.update(name=class_mapping_binary[int(t.name)]) if t.name.isdigit() else None)
         fig_svm = px.scatter(x=X_test_pca[:, 0], y=X_test_pca[:, 1], color=y_pred_svm_mapped,
                             labels={'x': 'PC1', 'y': 'PC2', 'color': 'Classe Predita'},
                             title="SVM - Dispersão das Classes Preditas",
-                            color_discrete_map=color_discrete_map)
+                            color_discrete_map=color_discrete_map_binary)
 
         st.plotly_chart(fig_svm)
 
         fig_svm_dist = px.histogram(
             x=y_pred_svm_mapped,
             labels={'x': 'Classe Predita', 'y': 'Contagem'},
-            title="SVM - Distribuição das Classes Preditas",
-            color_discrete_map=color_discrete_map
+            title="SVM - Distribuição das Classes Preditas"
         )
-        fig_svm_dist.update_traces(marker=dict(color=[color_discrete_map[c] for c in y_pred_svm_mapped]))
-        fig_svm_dist.update_layout(showlegend=False)  # Remover a legenda
-        st.plotly_chart(fig_svm_dist)        
+        st.plotly_chart(fig_svm_dist)
 
+        if kernel_svm == 'linear':
+            # Gráfico de barras para visualização
+            fig, ax = pl.subplots(figsize=(10, 6))
+            ax.barh(feature_importance_df['Feature'], feature_importance_df['Coeficiente'], color='purple')
+            ax.set_xlabel('Coeficiente')
+            ax.set_title('Coeficientes das Features no SVM Linear')
+            ax.invert_yaxis()  # Para que a feature mais importante apareça no topo
+            col2.pyplot(fig)
 
 with st.expander("Random Forest", expanded=False):
     col1, col2 = st.columns(2)
@@ -326,11 +362,25 @@ with st.expander("Random Forest", expanded=False):
 
         st.write("### Parâmetros do Modelo")
         st.write(clf_rf.get_params())
+
+        # Obter a importância das features
+        importances = clf_rf.feature_importances_
+        indices = np.argsort(importances)[::-1]  # Ordenar as features pela importância
+
+        # Criar um DataFrame para exibir as features com sua importância
+        feature_importance_df = pd.DataFrame({
+            'Feature': X.columns[indices],
+            'Importância': importances[indices]
+        })
+
+        # Exibir o DataFrame de importância das features
+        st.write("### Importância das Features")
+        st.dataframe(feature_importance_df)
     with col2:
         fig_rf = px.scatter(x=X_test_pca[:, 0], y=X_test_pca[:, 1], color=y_pred_rf_mapped,
                             labels={'x': 'PC1', 'y': 'PC2', 'color': 'Classe Predita'},
                             title="Random Forest - Dispersão das Classes Preditas",
-                            color_discrete_map=color_discrete_map)
+                            color_discrete_map=color_discrete_map_binary)
         
         st.plotly_chart(fig_rf)
 
@@ -338,12 +388,17 @@ with st.expander("Random Forest", expanded=False):
         fig_rf_dist = px.histogram(
             x=y_pred_rf_mapped,
             labels={'x': 'Classe Predita', 'y': 'Contagem'},
-            title="Random Forest - Distribuição das Classes Preditas",
-            color_discrete_map=color_discrete_map
+            title="Random Forest - Distribuição das Classes Preditas"
         )
-        fig_rf_dist.update_traces(marker=dict(color=[color_discrete_map[c] for c in y_pred_rf_mapped]))
-        fig_rf_dist.update_layout(showlegend=False)  # Remover a legenda
         st.plotly_chart(fig_rf_dist)
+
+        # Gráfico de barras para visualização
+        fig, ax = pl.subplots(figsize=(10, 6))
+        ax.barh(feature_importance_df['Feature'], feature_importance_df['Importância'], color='teal')
+        ax.set_xlabel('Importância')
+        ax.set_title('Importância das Features no Random Forest')
+        ax.invert_yaxis()  # Para que a feature mais importante apareça no topo
+        st.pyplot(fig)
 
     # Adicionar uma opção para selecionar a árvore de um Random Forest
     if isinstance(clf_rf, RandomForestClassifier):
@@ -358,25 +413,26 @@ with st.expander("Random Forest", expanded=False):
                 "Escolha a Profundidade Máxima da Árvore para Visualização", 
                 0, 
                 estimator.get_depth(),
-                estimator.get_depth()
+                estimator.get_depth(),
+                key="max_depth_visualizacao_rf"
             )
         
-        fig, ax = plt.subplots(figsize=(20, 10))
+        fig, ax = pl.subplots(figsize=(20, 10))
         plot_tree(estimator, 
             max_depth=max_depth_visualizacao_rf, 
             filled=False, 
             feature_names=X.columns, 
-            class_names=list(class_mapping.values()), 
+            class_names=list(class_mapping_binary.values()), 
             ax=ax)
 
-        plt.title(f"Árvore {tree_index + 1} da Random Forest")
+        pl.title(f"Árvore {tree_index + 1} da Random Forest")
         st.pyplot(fig)
 
 
 with st.expander("Comparação dos Classificadores", expanded=False):
     # Comparação da distribuição das classes preditas pelos três classificadores
 
-    fig_comparison = px.histogram(comparison_data, barmode='group', color_discrete_map=color_discrete_map,
+    fig_comparison = px.histogram(comparison_data, barmode='group', color_discrete_map=color_discrete_map_binary,
                                 labels={'value': 'Classe Predita', 'variable': 'Classificador'},
                                 title="Distribuição das Classes Preditas")
     st.plotly_chart(fig_comparison)
@@ -384,10 +440,10 @@ with st.expander("Comparação dos Classificadores", expanded=False):
 
     # Tabela de comparação das previsões
     comparison_df = pd.DataFrame({
-        'Real': [class_mapping.get(real, "Desconhecido") for real in y_test],
-        'Árvores de Decisão': [class_mapping.get(pred, "Desconhecido") for pred in y_pred_tree],
-        'SVM': [class_mapping.get(pred, "Desconhecido") for pred in y_pred_svm],
-        'Random Forest': [class_mapping.get(pred, "Desconhecido") for pred in y_pred_rf]
+        'Real': [class_mapping_binary.get(real, "Desconhecido") for real in y_test],
+        'Árvores de Decisão': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_tree],
+        'SVM': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_svm],
+        'Random Forest': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_rf]
     })
 
     # Aplicar a formatação condicional
@@ -409,25 +465,59 @@ with st.expander("Comparação dos Classificadores", expanded=False):
     st.write(f"- SVM: **{error_svm:.2f}%**")
     st.write(f"- Random Forest: **{error_rf:.2f}%**")
 
-with st.sidebar.expander("Playground", expanded=False):
+with st.expander("Playground", expanded=False):
     # Captura de valores numéricos para cada feature usando sliders
     input_data = {}
-    for feature in X.columns:
-        min_val = float(X[feature].min())
-        max_val = float(X[feature].max())
-        mean_val = float(X[feature].mean())
-        input_data[feature] = st.slider(f"Valor para {feature}", min_value=min_val, max_value=max_val, value=mean_val)
+    # Supondo que você já tenha o scaler e a transformação logarítmica aplicados em X_train
+    scaler = StandardScaler().fit(X_train)
+    # Reverter os dados escalonados e a transformação logarítmica para mostrar os valores originais
+    original_values = np.expm1(scaler.inverse_transform(X_train))
 
-    # Prever a classe para a nova instância
-    if st.button("Prever"):
-        new_instance = pd.DataFrame([input_data])
-        pred_tree = clf_tree.predict(new_instance)[0]
-        pred_svm = clf_svm.predict(new_instance)[0]
-        pred_rf = clf_rf.predict(new_instance)[0]
+    with st.form("input_form"):
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["College", "English", "Quantitative", "Domain", "Analytical", "Study"])
 
-        st.write(f'Árvores de Decisão prevê: {styled_metric_text_classes(class_mapping[pred_tree], "")}', unsafe_allow_html=True)
-        st.write(f'SVM prevê: {styled_metric_text_classes(class_mapping[pred_svm], "")}', unsafe_allow_html=True)
-        st.write(f'Random Forest prevê: {styled_metric_text_classes(class_mapping[pred_rf], "")}', unsafe_allow_html=True)
+        for i, feature in enumerate(X.columns):
+            if feature != 'label':
+                min_val = float(original_values[:, i].min())
+                max_val = float(original_values[:, i].max())
+                mean_val = float(original_values[:, i].mean())
+                if 'percentage' in feature:
+                    input_data[feature] = tab1.slider(f"Valor para {feature}", min_value=min_val, max_value=max_val, value=mean_val)
+                elif 'english' in feature:
+                    input_data[feature] = tab2.slider(f"Valor para {feature}", min_value=min_val, max_value=max_val, value=mean_val)
+                elif 'quantitative' in feature:
+                    input_data[feature] = tab3.slider(f"Valor para {feature}", min_value=min_val, max_value=max_val, value=mean_val)
+                elif 'domain' in feature:
+                    input_data[feature] = tab4.slider(f"Valor para {feature}", min_value=min_val, max_value=max_val, value=mean_val)
+                elif 'analytical' in feature:
+                    input_data[feature] = tab5.slider(f"Valor para {feature}", min_value=min_val, max_value=max_val, value=mean_val)
+                elif 'study' in feature:
+                    input_data[feature] = tab6.slider(f"Valor para {feature}", min_value=min_val, max_value=max_val, value=mean_val)
+                else:
+                    input_data[feature] = st.slider(f"Valor para {feature}", min_value=min_val, max_value=max_val, value=mean_val)
+
+        submit_button = st.form_submit_button(label="Prever")
+
+    # Prever a classe para a nova instância somente após a submissão do formulário
+    if submit_button:
+        # Criar um DataFrame com os valores originais selecionados
+        new_instance_original = pd.DataFrame([input_data])
+
+        # Aplicar a transformação logarítmica
+        new_instance_log = np.log1p(new_instance_original)
+
+        # Aplicar o StandardScaler
+        new_instance_scaled = scaler.transform(new_instance_log)
+
+        # Fazer a predição com os dados transformados
+        pred_tree = clf_tree.predict(new_instance_scaled)[0]
+        pred_svm = clf_svm.predict(new_instance_scaled)[0]
+        pred_rf = clf_rf.predict(new_instance_scaled)[0]
+
+        st.write(f'Árvores de Decisão prevê: {styled_metric_text_classes(class_mapping_binary[pred_tree], "")}', unsafe_allow_html=True)
+        st.write(f'SVM prevê: {styled_metric_text_classes(class_mapping_binary[pred_svm], "")}', unsafe_allow_html=True)
+        st.write(f'Random Forest prevê: {styled_metric_text_classes(class_mapping_binary[pred_rf], "")}', unsafe_allow_html=True)
+
 
 
 with st.expander('Conclusão', expanded=False):
