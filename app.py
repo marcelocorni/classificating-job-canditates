@@ -14,7 +14,6 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 from sklearn.metrics import classification_report, accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 import plotly.express as px
-import plotly.figure_factory as ff
 from sklearn.decomposition import PCA
 import hashlib
 
