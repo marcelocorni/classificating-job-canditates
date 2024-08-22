@@ -1,60 +1,101 @@
+from sklearn.discriminant_analysis import StandardScaler
 import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
-
-from sklearn.neighbors import KNeighborsClassifier
-from xgboost import XGBClassifier
-from sklearn.tree import DecisionTreeClassifier
 from sklearn.tree import plot_tree
 import matplotlib.pyplot as pl
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+from xgboost import XGBClassifier
 from sklearn.metrics import classification_report, accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 import plotly.express as px
 from sklearn.decomposition import PCA
-import hashlib
+from lib.interface.cabecalhos import cria_cabecalho_padrao
+from lib.interface.classificadores.parametros import parametros_arvore_decisao, parametros_knn, parametros_logistic_regression, parametros_random_forest, parametros_svm, parametros_xgboost
+from lib.interface.coloracao import apply_styles, color_metric, styled_metric_text, styled_metric_text_classes
+from lib.treinamento.relatorios import classification_report_to_df
 
-st.set_page_config(page_title='Trabalho 5 - Clasificação', layout='wide')
+
+st.set_page_config(page_title="Trabalho 5 - Clasificação", layout="wide")
 
 pl.style.use('dark_background')
 
-st.title("Classificação dos Dados Agrupados de Candidatos a Emprego")
+cria_cabecalho_padrao(st,'Classificação dos Dados Agrupados de Candidatos a Emprego',
+                      'Análise Classificativa de Dados Agrupados',
+                      'Mineração de Dados',
+                      'Agosto/2024')
 
-# Função para gerar o URL do Gravatar a partir do e-mail
-def get_gravatar_url(email, size=100):
-    email_hash = hashlib.md5(email.strip().lower().encode('utf-8')).hexdigest()
-    gravatar_url = f"https://www.gravatar.com/avatar/{email_hash}?s={size}"
-    return gravatar_url
 
-# Definir o e-mail e o tamanho da imagem
-email = "marcelo@desenvolvedor.net"  # Substitua pelo seu e-mail
-size = 200  # Tamanho da imagem
+@st.cache_data
+def treinar_arvore_decisao(X_train, y_train, max_depth_tree, min_samples_split_tree, min_samples_leaf_tree, max_features_tree, criterion_tree):
+    clf_tree = DecisionTreeClassifier(max_depth=max_depth_tree,
+                                min_samples_split=min_samples_split_tree,
+                                min_samples_leaf=min_samples_leaf_tree,
+                                max_features=max_features_tree,
+                                criterion=criterion_tree,
+                                random_state=42)
+    clf_tree.fit(X_train, y_train)
+    return clf_tree
 
-# Obter o URL do Gravatar
-gravatar_url = get_gravatar_url(email, size)
 
-# Layout principal com colunas
-col1, col2 = st.columns([1, 2])
+@st.cache_data
+def treinar_svm(X_train, y_train, C_svm, kernel_svm, degree_svm, gamma_svm, coef0_svm):
+    clf_svm = SVC(C=C_svm, kernel=kernel_svm, degree=degree_svm, gamma=gamma_svm, coef0=coef0_svm, random_state=42)
+    clf_svm.fit(X_train, y_train)
+    return clf_svm
 
-# Conteúdo da coluna esquerda
-with col1:
-    st.markdown(
-        f"""
-        <div style="text-align: right;">
-            <img src="{gravatar_url}" alt="Gravatar" style="width: 150px;">
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-# Conteúdo da coluna direita
-with col2:
-    st.write("### Análise Classificativa de Dados Agrupados")
-    st.write("###### Marcelo Corni Alves")
-    st.write("Agosto/2024")
-    st.write("Disciplina: Mineração de Dados")
+
+@st.cache_data
+def treinar_random_forest(X_train, y_train, n_estimators_rf, max_depth_rf, min_samples_split_rf, min_samples_leaf_rf, max_features_rf, criterion_rf, bootstrap_rf):
+    clf_rf = RandomForestClassifier(n_estimators=n_estimators_rf,
+                                max_depth=max_depth_rf,
+                                min_samples_split=min_samples_split_rf,
+                                min_samples_leaf=min_samples_leaf_rf,
+                                max_features=max_features_rf,
+                                bootstrap=bootstrap_rf,
+                                criterion=criterion_rf,
+                                random_state=42)
+    clf_rf.fit(X_train, y_train)
+    return clf_rf
+
+
+@st.cache_data
+def treinar_logistic_regression(X_train, y_train, C_lr, solver_lr):
+    clf_lr = LogisticRegression(C=C_lr, solver=solver_lr, random_state=42)
+    clf_lr.fit(X_train, y_train)
+    return clf_lr
+
+@st.cache_data
+def treinar_knn(X_train, y_train, n_neighbors_knn, weights_knn, algorithm_knn):
+    clf_knn = KNeighborsClassifier(n_neighbors=n_neighbors_knn, weights=weights_knn, algorithm=algorithm_knn)
+    clf_knn.fit(X_train, y_train)
+    return clf_knn
+
+@st.cache_data
+def treinar_xgboost(X_train, y_train, n_estimators_xgb, learning_rate_xgb, max_depth_xgb, colsample_bytree_xgb,subsample_xgb):
+    clf_xgb = XGBClassifier(n_estimators=n_estimators_xgb,
+                        learning_rate=learning_rate_xgb,
+                        max_depth=max_depth_xgb,
+                        colsample_bytree=colsample_bytree_xgb,
+                        subsample=subsample_xgb,
+                        random_state=42)
+
+    clf_xgb.fit(X_train, y_train)
+    return clf_xgb
+
+
+#Apresentar e retornar os valores dos hiperparâmetros na sidebar
+max_depth_tree, min_samples_split_tree, min_samples_leaf_tree, max_features_tree, criterion_tree = parametros_arvore_decisao(st)
+C_svm, kernel_svm, degree_svm, gamma_svm, coef0_svm = parametros_svm(st)
+n_estimators_rf, max_depth_rf, min_samples_split_rf, min_samples_leaf_rf, max_features_rf, criterion_rf, bootstrap_rf = parametros_random_forest(st)
+C_lr, solver_lr = parametros_logistic_regression(st)
+n_neighbors_knn, weights_knn, algorithm_knn = parametros_knn(st)
+n_estimators_xgb, learning_rate_xgb, max_depth_xgb, colsample_bytree_xgb, subsample_xgb = parametros_xgboost(st)
+
 
 # Carregar os dados
 data = pd.read_csv('data/dados_normalizados.csv')
@@ -69,160 +110,34 @@ y = data['label']
 # Dividir os dados em treino e teste
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Parâmetros para Árvores de Decisão
-with st.sidebar.expander("Hiperparâmetros - Árvores de Decisão",expanded=False):
-    max_depth_tree = st.slider("Profundidade Máxima", 1, 20, 10, key="max_depth_tree")
-    min_samples_split_tree = st.slider("Mínimo de Amostras para Split", 2, 20, 15, key="min_samples_split_tree")
-    min_samples_leaf_tree = st.slider("Mínimo de Amostras na Folha", 1, 10, 3, key="min_samples_leaf_tree")
-    max_features_tree = st.selectbox("Máximo de Features", ['sqrt', 'log2', None], key="max_features_tree")
-    criterion_tree = st.selectbox("Critério", ["gini", "entropy","log_loss"], index=0, key="criterion_tree")
 
-clf_tree = DecisionTreeClassifier(max_depth=max_depth_tree,
-                                  min_samples_split=min_samples_split_tree,
-                                  min_samples_leaf=min_samples_leaf_tree,
-                                  max_features=max_features_tree,
-                                  criterion=criterion_tree,
-                                  random_state=42)
-clf_tree.fit(X_train, y_train)
+# Treinar os modelos
+clf_tree = treinar_arvore_decisao(X_train, y_train, max_depth_tree, min_samples_split_tree, min_samples_leaf_tree, max_features_tree, criterion_tree)
+clf_svm = treinar_svm(X_train, y_train, C_svm, kernel_svm, degree_svm, gamma_svm, coef0_svm)
+clf_rf = treinar_random_forest(X_train, y_train, n_estimators_rf, max_depth_rf, min_samples_split_rf, min_samples_leaf_rf, max_features_rf, criterion_rf, bootstrap_rf)
+clf_lr = treinar_logistic_regression(X_train, y_train, C_lr, solver_lr)
+clf_knn = treinar_knn(X_train, y_train, n_neighbors_knn, weights_knn, algorithm_knn)
+clf_xgb = treinar_xgboost(X_train, y_train, n_estimators_xgb, learning_rate_xgb, max_depth_xgb, colsample_bytree_xgb, subsample_xgb)
+
+# Fazer predições
 y_pred_tree = clf_tree.predict(X_test)
-
-# Parâmetros para SVM
-with st.sidebar.expander("Hiperparâmetros - SVM",expanded=False):
-    C_svm = st.number_input("C (Regularização)", 0.01, 10.0, 0.10, key="C_svm")
-    kernel_svm = st.selectbox("Kernel", ['linear', 'poly', 'rbf', 'sigmoid'], key="kernel_svm")
-    degree_svm = st.slider("Grau (se kernel for poly)", 2, 5, 3, key="degree_svm")
-    gamma_svm = st.selectbox("Gamma", ['scale', 'auto'], key="gamma_svm")
-    coef0_svm = st.slider("Coef0 (para poly/sigmoid)", 0.0, 1.0, 0.0, key="coef0_svm")
-
-clf_svm = SVC(C=C_svm, kernel=kernel_svm, degree=degree_svm, gamma=gamma_svm, coef0=coef0_svm, random_state=42)
-clf_svm.fit(X_train, y_train)
 y_pred_svm = clf_svm.predict(X_test)
-
-# Parâmetros para Random Forest
-with st.sidebar.expander("Hiperparâmetros - Random Forest",expanded=False):
-    n_estimators_rf = st.slider("Número de Árvores (Estimadores)", 10, 200, 111, key="n_estimators_rf")
-    max_depth_rf = st.slider("Profundidade Máxima", 1, 20, 10, key="max_depth_rf")
-    min_samples_split_rf = st.slider("Mínimo de Amostras para Split", 2, 20, 4, key="min_samples_split_rf")
-    min_samples_leaf_rf = st.slider("Mínimo de Amostras na Folha", 1, 10, 1, key="min_samples_leaf_rf")
-    max_features_rf = st.selectbox("Máximo de Features", ['sqrt', 'log2', None], key="max_features_rf")
-    criterion_rf = st.selectbox("Critério", ["gini", "entropy","log_loss"], key="criterion_rf")
-    bootstrap_rf = st.selectbox("Bootstrap", [True, False], key="bootstrap_rf")
-
-clf_rf = RandomForestClassifier(n_estimators=n_estimators_rf,
-                                max_depth=max_depth_rf,
-                                min_samples_split=min_samples_split_rf,
-                                min_samples_leaf=min_samples_leaf_rf,
-                                max_features=max_features_rf,
-                                bootstrap=bootstrap_rf,
-                                criterion=criterion_rf,
-                                random_state=42)
-
-clf_rf.fit(X_train, y_train)
 y_pred_rf = clf_rf.predict(X_test)
+y_pred_lr = clf_lr.predict(X_test)
+y_pred_knn = clf_knn.predict(X_test)
+y_pred_xgb = clf_xgb.predict(X_test)
 
 # Converter as predições para as classes nomeadas
 class_mapping_binary = {0: "NAO_BP", 1: "BP"}
 y_pred_rf_mapped = [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_rf]
 
-# Parâmetros para Logistic Regression
-with st.sidebar.expander("Hiperparâmetros - Logistic Regression", expanded=False):
-    C_lr = st.number_input("C (Regularização Inversa)", 0.01, 10.0, 0.01, key="C_lr")
-    solver_lr = st.selectbox("Solver", ['liblinear', 'lbfgs', 'sag', 'saga', 'newton-cg'], key="solver_lr")
-
-clf_lr = LogisticRegression(C=C_lr, solver=solver_lr, random_state=42)
-clf_lr.fit(X_train, y_train)
-y_pred_lr = clf_lr.predict(X_test)
-
-# Parâmetros para K-Nearest Neighbors
-with st.sidebar.expander("Hiperparâmetros - KNN", expanded=False):
-    n_neighbors_knn = st.slider("Número de Vizinhos (K)", 1, 20, 10, key="n_neighbors_knn")
-    weights_knn = st.selectbox("Pesos", ['uniform', 'distance'], key="weights_knn")
-    algorithm_knn = st.selectbox("Algoritmo", ['auto', 'ball_tree', 'kd_tree', 'brute'], key="algorithm_knn")
-
-clf_knn = KNeighborsClassifier(n_neighbors=n_neighbors_knn, weights=weights_knn, algorithm=algorithm_knn)
-clf_knn.fit(X_train, y_train)
-y_pred_knn = clf_knn.predict(X_test)
-
 # Converter as predições para as classes nomeadas
 y_pred_lr_mapped = [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_lr]
 y_pred_knn_mapped = [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_knn]
 
-
-# Parâmetros para XGBoost
-with st.sidebar.expander("Hiperparâmetros - XGBoost", expanded=False):
-    n_estimators_xgb = st.slider("Número de Árvores (Estimadores)", 50, 500, 100, key="n_estimators_xgb")
-    learning_rate_xgb = st.number_input("Taxa de Aprendizado", 0.01, 0.5, 0.25, key="learning_rate_xgb")
-    max_depth_xgb = st.slider("Profundidade Máxima", 1, 15, 4, key="max_depth_xgb")
-    colsample_bytree_xgb = st.number_input("Amostragem de Colunas por Árvore", 0.1, 1.0, 0.90, key="colsample_bytree_xgb")
-    subsample_xgb = st.number_input("Amostragem de Filas", 0.1, 1.0, 0.8, key="subsample_xgb")
-
-clf_xgb = XGBClassifier(n_estimators=n_estimators_xgb,
-                        learning_rate=learning_rate_xgb,
-                        max_depth=max_depth_xgb,
-                        colsample_bytree=colsample_bytree_xgb,
-                        subsample=subsample_xgb,
-                        random_state=42)
-
-clf_xgb.fit(X_train, y_train)
-y_pred_xgb = clf_xgb.predict(X_test)
-
 # Converter as predições para as classes nomeadas
 y_pred_xgb_mapped = [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_xgb]
 
-
-
-
-# Função para aplicar cores com base nos valores
-def color_metric(val):
-    if val > 0.75:
-        color = 'green'
-    elif val > 0.6:
-        color = 'orange'
-    else:
-        color = 'red'
-    return f'color: {color}'
-
-# Funções para estilizar as métricas
-def styled_metric_text(metric_value, metric_name):
-    color = color_metric(metric_value)[7:]  # Remove 'color: ' para pegar só a cor
-    return f'<span style="color:{color}; font-weight:bold;">{metric_name} {metric_value:.2f}</span>'
-
-# Função para aplicar cores com base nos classes
-def color_metric_classes(str):
-    if str == 'BP':
-        color = 'green'
-    elif str == 'MP':
-        color = 'orange'
-    elif str == 'LP':
-        color = 'red'
-    else:
-        color = 'purple'
-    return f'color: {color}'
-
-# Funções para estilizar as classes
-def styled_metric_text_classes(metric_value, metric_name):
-    color = color_metric_classes(metric_value)[7:]  # Remove 'color: ' para pegar só a cor
-    return f'<span style="color:{color}; font-weight:bold;">{metric_name} {metric_value}</span>'
-
-
-# Função para criar dataframe do classification_report
-def classification_report_to_df(report):
-    report_data = []
-    lines = report.split('\n')
-    for line in lines[2:-3]:  # Modificado para evitar linhas inválidas
-        row_data = line.split()
-        if len(row_data) == 0 or len(row_data) < 5:  # Ignorar linhas inválidas
-            continue
-        row = {
-            'class': row_data[0],
-            'precision': float(row_data[1]),
-            'recall': float(row_data[2]),
-            'f1-score': float(row_data[3]),
-            'support': int(row_data[4])
-        }
-        report_data.append(row)
-    dataframe = pd.DataFrame.from_dict(report_data)
-    return dataframe.set_index('class')
 
 # Criar gráficos de dispersão 2D para visualizar as classificações
 pca = PCA(n_components=2)
@@ -334,8 +249,6 @@ with st.expander("SVM",expanded=False):
     recall_svm = recall_score(y_test, y_pred_svm, average='weighted')
     f1_svm = f1_score(y_test, y_pred_svm, average='weighted')
     df_svm_styled = df_svm.style.applymap(color_metric, subset=['precision', 'recall', 'f1-score'])
-
-
 
     with col1:
         st.subheader("Resultados")
@@ -656,7 +569,6 @@ with st.expander("Comparação dos Classificadores", expanded=False):
         'KNN': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_knn],
         'XGBoost': [class_mapping_binary.get(pred, "Desconhecido") for pred in y_pred_xgb]
     })
-   
 
     # Gráfico de barras empilhadas para comparação das predições
     fig_comparison = px.histogram(comparison_data, barmode='group', 
@@ -667,21 +579,6 @@ with st.expander("Comparação dos Classificadores", expanded=False):
 
     col1, col2 = st.columns(2)
     with col1:
-        # Aplicar a formatação condicional
-        def apply_styles(x):
-            # Inicializar uma lista para armazenar os estilos
-            styles = ['' for _ in range(len(x))]
-
-            # Iterar sobre as colunas
-            for i, col in enumerate(x.index):
-                if col == 'Real':
-                    styles[i] = 'color: blue'  # Coluna 'Real' em azul
-                elif x[col] == x['Real']:
-                    styles[i] = 'color: green'  # Valores corretos em verde
-                else:
-                    styles[i] = 'color: red'  # Valores errados em vermelho
-            return styles
-        
         # Tabela de comparação das previsões
         comparison_df = pd.DataFrame({
             'Real': [class_mapping_binary.get(real, "Desconhecido") for real in y_test],
@@ -698,6 +595,7 @@ with st.expander("Comparação dos Classificadores", expanded=False):
         
         st.write("### Tabela de Comparação das Previsões")
         st.dataframe(comparison_styled)
+
     with col2:
         # Cálculo do percentual de erro para cada classificador
         total_samples = len(y_test)
