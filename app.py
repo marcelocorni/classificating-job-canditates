@@ -116,7 +116,7 @@ with col1:
     st.write(data['label'].value_counts().reset_index().rename(columns={'index': 'Classe', 'label': 'Contagem'}))
 
 
-under_over_sampling = st.selectbox("Escolha a técnica de balanceamento", ['Random Under Sampler', 'SMOTE'], key="sampling")
+under_over_sampling = st.selectbox("Escolha a técnica de balanceamento", ['Random Under Sampler', 'SMOTE'], key="sampling", index=1)
 
 if under_over_sampling == 'Random Under Sampler':
     # Igualar a quantidade de amostras de cada classe

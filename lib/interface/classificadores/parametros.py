@@ -54,10 +54,10 @@ def parametros_knn(st):
 def parametros_xgboost(st):
     # Parâmetros para XGBoost
     with st.sidebar.expander("Hiperparâmetros - XGBoost", expanded=False):
-        n_estimators_xgb = st.slider("Número de Árvores (Estimadores)", 50, 500, 100, key="n_estimators_xgb")
-        learning_rate_xgb = st.number_input("Taxa de Aprendizado", 0.01, 0.5, 0.25, key="learning_rate_xgb")
+        n_estimators_xgb = st.slider("Número de Árvores (Estimadores)", 50, 500, 300, key="n_estimators_xgb")
+        learning_rate_xgb = st.number_input("Taxa de Aprendizado", 0.01, 0.5, 0.08, key="learning_rate_xgb")
         max_depth_xgb = st.slider("Profundidade Máxima", 1, 15, 4, key="max_depth_xgb")
         colsample_bytree_xgb = st.number_input("Amostragem de Colunas por Árvore", 0.1, 1.0, 0.90, key="colsample_bytree_xgb")
-        subsample_xgb = st.number_input("Amostragem de Filas", 0.1, 1.0, 0.8, key="subsample_xgb")
+        subsample_xgb = st.number_input("Amostragem de Filas", 0.1, 1.0, 0.80, key="subsample_xgb")
 
     return n_estimators_xgb, learning_rate_xgb, max_depth_xgb, colsample_bytree_xgb, subsample_xgb
