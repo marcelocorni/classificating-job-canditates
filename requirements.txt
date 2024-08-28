@@ -6,3 +6,4 @@ scipy
 numpy
 streamlit
 xgboost
+imblearn
