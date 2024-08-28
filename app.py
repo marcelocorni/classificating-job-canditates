@@ -13,11 +13,14 @@ from sklearn.tree import DecisionTreeClassifier
 from xgboost import XGBClassifier
 from sklearn.metrics import classification_report, accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 import plotly.express as px
+import plotly.graph_objects as go
 from sklearn.decomposition import PCA
 from lib.interface.cabecalhos import cria_cabecalho_padrao
 from lib.interface.classificadores.parametros import parametros_arvore_decisao, parametros_knn, parametros_logistic_regression, parametros_random_forest, parametros_svm, parametros_xgboost
 from lib.interface.coloracao import apply_styles, color_metric, styled_metric_text, styled_metric_text_classes
 from lib.treinamento.relatorios import classification_report_to_df
+from imblearn.over_sampling import SMOTE
+from imblearn.under_sampling import RandomUnderSampler
 
 
 st.set_page_config(page_title="Trabalho 5 - Clasificação", layout="wide")
@@ -88,6 +91,8 @@ def treinar_xgboost(X_train, y_train, n_estimators_xgb, learning_rate_xgb, max_d
     return clf_xgb
 
 
+test_size = 0.4
+
 #Apresentar e retornar os valores dos hiperparâmetros na sidebar
 max_depth_tree, min_samples_split_tree, min_samples_leaf_tree, max_features_tree, criterion_tree = parametros_arvore_decisao(st)
 C_svm, kernel_svm, degree_svm, gamma_svm, coef0_svm = parametros_svm(st)
@@ -103,12 +108,43 @@ data = pd.read_csv('data/dados_normalizados.csv')
 # Adicionar nova coluna label para classificação BP ou NAO_BP
 data['label'] = data['performance'].apply(lambda x: 1 if x == 'BP' else 0)
 
-# Remover a coluna 'performance' do DataFrame para não ser incluída no playground
-X = data.drop(columns=['performance', 'label'])
-y = data['label']
+col1, col2 = st.columns(2)
+
+# Exibir a disribuição das classes
+with col1:
+    st.write(f"###### Distribuição das Classes")
+    st.write(data['label'].value_counts().reset_index().rename(columns={'index': 'Classe', 'label': 'Contagem'}))
+
+
+under_over_sampling = st.selectbox("Escolha a técnica de balanceamento", ['Random Under Sampler', 'SMOTE'], key="sampling")
+
+if under_over_sampling == 'Random Under Sampler':
+    # Igualar a quantidade de amostras de cada classe
+    under = RandomUnderSampler(random_state=42)
+    X_resampled, y_resampled = under.fit_resample(data.drop(columns=['performance', 'label']), data['label'])
+else:
+    # Igualar a quantidade de amostras de cada classe
+    smote = SMOTE(random_state=42)
+    X_resampled, y_resampled = smote.fit_resample(data.drop(columns=['performance', 'label']), data['label'])
+
+
+# # Remover a coluna 'performance' do DataFrame para não ser incluída no playground
+# X = data.drop(columns=['performance', 'label'])
+# y = data['label']
+
+X = X_resampled
+y = y_resampled
+
+# Exibindo a distribuição das classes após o balanceamento com SMOTE
+with col2:    
+    st.write(f"###### Distribuição das Classes após aplicação do {under_over_sampling}")
+    st.write(y.value_counts().reset_index().rename(columns={'index': 'Classe', 'label': 'Contagem'}))
+
 
 # Dividir os dados em treino e teste
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+
 
 
 # Treinar os modelos
@@ -194,6 +230,35 @@ with st.expander("Árvore de Decisão",expanded=False):
         st.write("### Importância das Features")
         st.dataframe(feature_importance_df_tree)
 
+        # Exibindo o gráfico da matriz de confusão
+        cm_tree = confusion_matrix(y_test, y_pred_tree)
+        
+        # Criar o gráfico de matriz de confusão
+        fig = go.Figure(data=go.Heatmap(
+            z=cm_tree,
+            x=['Previsto NAO_BP', 'Previsto BP'],
+            y=['Real NAO_BP', 'Real BP'],
+            colorscale='tealgrn',
+            colorbar=dict(title='Count'),
+            zmin=0,
+            zmax=np.max(cm_tree),
+            texttemplate='%{z}',
+            textfont=dict(size=14, color='white'),
+            showscale=True
+        ))
+
+        fig.update_layout(
+            title='Matriz de Confusão - Árvore de Decisão',
+            xaxis_title='Predito',
+            yaxis_title='Real',
+            xaxis=dict(tickvals=[0, 1], ticktext=['NAO_BP', 'BP']),
+            yaxis=dict(tickvals=[0, 1], ticktext=['NAO_BP', 'BP']),
+            width=600,
+            height=500
+        )
+
+        st.plotly_chart(fig)
+
     with col2:
         fig_tree = px.scatter(x=X_test_pca[:, 0], y=X_test_pca[:, 1], color=y_pred_tree_mapped,
                             labels={'x': 'PC1', 'y': 'PC2', 'color': 'Classe Predita'},
@@ -206,6 +271,7 @@ with st.expander("Árvore de Decisão",expanded=False):
             x=y_pred_tree_mapped,
             labels={'x': 'Classe Predita', 'y': 'Contagem'},
             title="Árvores de Decisão - Distribuição das Classes Preditas",
+            color_discrete_map=color_discrete_map_binary
         )
 
         st.plotly_chart(fig_tree_dist)
@@ -280,6 +346,35 @@ with st.expander("SVM",expanded=False):
             st.dataframe(feature_importance_df)
         else:
             st.write("### Importância das Features não disponível para SVM com Kernel não-linear")
+        
+        # Exibindo o gráfico da matriz de confusão
+        cm_smv = confusion_matrix(y_test, y_pred_svm)
+        
+        # Criar o gráfico de matriz de confusão
+        fig_cm_svm = go.Figure(data=go.Heatmap(
+            z=cm_smv,
+            x=['Previsto NAO_BP', 'Previsto BP'],
+            y=['Real NAO_BP', 'Real BP'],
+            colorscale='tealgrn',
+            colorbar=dict(title='Count'),
+            zmin=0,
+            zmax=np.max(cm_smv),
+            texttemplate='%{z}',
+            textfont=dict(size=14, color='white'),
+            showscale=True
+        ))
+
+        fig_cm_svm.update_layout(
+            title='Matriz de Confusão - SVM',
+            xaxis_title='Predito',
+            yaxis_title='Real',
+            xaxis=dict(tickvals=[0, 1], ticktext=['NAO_BP', 'BP']),
+            yaxis=dict(tickvals=[0, 1], ticktext=['NAO_BP', 'BP']),
+            width=600,
+            height=500
+        )
+
+        st.plotly_chart(fig_cm_svm)
 
     with col2:
         fig_tree.for_each_trace(lambda t: t.update(name=class_mapping_binary[int(t.name)]) if t.name.isdigit() else None)
@@ -340,6 +435,36 @@ with st.expander("Random Forest", expanded=False):
         # Exibir o DataFrame de importância das features
         st.write("### Importância das Features")
         st.dataframe(feature_importance_df)
+
+        # Exibindo o gráfico da matriz de confusão
+        cm_rf = confusion_matrix(y_test, y_pred_rf)
+
+        # Criar o gráfico de matriz de confusão
+        fig_cm_rf = go.Figure(data=go.Heatmap(
+            z=cm_rf,
+            x=['Previsto NAO_BP', 'Previsto BP'],
+            y=['Real NAO_BP', 'Real BP'],
+            colorscale='tealgrn',
+            colorbar=dict(title='Count'),
+            zmin=0,
+            zmax=np.max(cm_rf),
+            texttemplate='%{z}',
+            textfont=dict(size=14, color='white'),
+            showscale=True
+        ))
+
+        fig_cm_rf.update_layout(
+            title='Matriz de Confusão - Random Forest',
+            xaxis_title='Predito',
+            yaxis_title='Real',
+            xaxis=dict(tickvals=[0, 1], ticktext=['NAO_BP', 'BP']),
+            yaxis=dict(tickvals=[0, 1], ticktext=['NAO_BP', 'BP']),
+            width=600,
+            height=500
+        )
+
+        st.plotly_chart(fig_cm_rf)
+
     with col2:
         fig_rf = px.scatter(x=X_test_pca[:, 0], y=X_test_pca[:, 1], color=y_pred_rf_mapped,
                             labels={'x': 'PC1', 'y': 'PC2', 'color': 'Classe Predita'},
@@ -429,6 +554,35 @@ with st.expander("Logistic Regression", expanded=False):
         st.write("### Importância das Features (Coeficientes)")
         st.dataframe(feature_importance_df_lr)
 
+        # Exibindo o gráfico da matriz de confusão
+        cm_lr = confusion_matrix(y_test, y_pred_lr)
+
+        # Criar o gráfico de matriz de confusão
+        fig_cm_lr = go.Figure(data=go.Heatmap(
+            z=cm_lr,
+            x=['Previsto NAO_BP', 'Previsto BP'],
+            y=['Real NAO_BP', 'Real BP'],
+            colorscale='tealgrn',
+            colorbar=dict(title='Count'),
+            zmin=0,
+            zmax=np.max(cm_lr),
+            texttemplate='%{z}',
+            textfont=dict(size=14, color='white'),
+            showscale=True
+        ))
+
+        fig_cm_lr.update_layout(
+            title='Matriz de Confusão - Logistic Regression',
+            xaxis_title='Predito',
+            yaxis_title='Real',
+            xaxis=dict(tickvals=[0, 1], ticktext=['NAO_BP', 'BP']),
+            yaxis=dict(tickvals=[0, 1], ticktext=['NAO_BP', 'BP']),
+            width=600,
+            height=500
+        )
+
+        st.plotly_chart(fig_cm_lr)
+
     with col2:
         fig_lr = px.scatter(x=X_test_pca[:, 0], y=X_test_pca[:, 1], color=y_pred_lr_mapped,
                             labels={'x': 'PC1', 'y': 'PC2', 'color': 'Classe Predita'},
@@ -473,6 +627,35 @@ with st.expander("K-Nearest Neighbors", expanded=False):
 
         st.write("### Parâmetros do Modelo")
         st.write(clf_knn.get_params())
+
+        # Exibindo o gráfico da matriz de confusão
+        cm_knn = confusion_matrix(y_test, y_pred_knn)
+
+        # Criar o gráfico de matriz de confusão
+        fig_cm_knn = go.Figure(data=go.Heatmap(
+            z=cm_knn,
+            x=['Previsto NAO_BP', 'Previsto BP'],
+            y=['Real NAO_BP', 'Real BP'],
+            colorscale='tealgrn',
+            colorbar=dict(title='Count'),
+            zmin=0,
+            zmax=np.max(cm_knn),
+            texttemplate='%{z}',
+            textfont=dict(size=14, color='white'),
+            showscale=True
+        ))
+
+        fig_cm_knn.update_layout(
+            title='Matriz de Confusão - K-Nearest Neighbors',
+            xaxis_title='Predito',
+            yaxis_title='Real',
+            xaxis=dict(tickvals=[0, 1], ticktext=['NAO_BP', 'BP']),
+            yaxis=dict(tickvals=[0, 1], ticktext=['NAO_BP', 'BP']),
+            width=600,
+            height=500
+        )
+
+        st.plotly_chart(fig_cm_knn)
 
     with col2:
         fig_knn = px.scatter(x=X_test_pca[:, 0], y=X_test_pca[:, 1], color=y_pred_knn_mapped,
@@ -524,6 +707,35 @@ with st.expander("XGBoost", expanded=False):
         # Exibir o DataFrame de importância das features
         st.write("### Importância das Features")
         st.dataframe(feature_importance_df_xgb)
+
+        # Exibindo o gráfico da matriz de confusão
+        cm_xgb = confusion_matrix(y_test, y_pred_xgb)
+
+        # Criar o gráfico de matriz de confusão
+        fig_cm_xgb = go.Figure(data=go.Heatmap(
+            z=cm_xgb,
+            x=['Previsto NAO_BP', 'Previsto BP'],
+            y=['Real NAO_BP', 'Real BP'],
+            colorscale='tealgrn',
+            colorbar=dict(title='Count'),
+            zmin=0,
+            zmax=np.max(cm_xgb),
+            texttemplate='%{z}',
+            textfont=dict(size=14, color='white'),
+            showscale=True
+        ))
+
+        fig_cm_xgb.update_layout(
+            title='Matriz de Confusão - XGBoost',
+            xaxis_title='Predito',
+            yaxis_title='Real',
+            xaxis=dict(tickvals=[0, 1], ticktext=['NAO_BP', 'BP']),
+            yaxis=dict(tickvals=[0, 1], ticktext=['NAO_BP', 'BP']),
+            width=600,
+            height=500
+        )
+
+        st.plotly_chart(fig_cm_xgb)
 
     with col2:
         fig_xgb = px.scatter(x=X_test_pca[:, 0], y=X_test_pca[:, 1], color=y_pred_xgb_mapped,
@@ -687,6 +899,91 @@ with st.expander("Comparação dos Classificadores", expanded=False):
                           color_discrete_map=color_discrete_map_classificadores)
     
     st.plotly_chart(fig_recall_score)
+
+   # Exibir um gráfico de barras polar para comparar as métricas de cada classificador
+   
+
+    fig_metrics_polar = go.Figure()
+    
+    # Adicionar as métricas de cada classificador ao gráfico polar
+    fig_metrics_polar.add_trace(go.Scatterpolar(
+        r=[accuracy_tree, precision_tree, recall_tree, f1_tree, error_tree/100],
+        theta=['Acurácia', 'Precisão', 'Recall', 'F1-Score', 'Erro'],
+        fill=None,
+        name='Árvores de Decisão',
+        fillcolor='deepskyblue',
+        opacity=0.70
+    ))
+
+    fig_metrics_polar.add_trace(go.Scatterpolar(
+        r=[accuracy_svm, precision_svm, recall_svm, f1_svm, error_svm/100],
+        theta=['Acurácia', 'Precisão', 'Recall', 'F1-Score', 'Erro'],
+        fill=None,
+        name='SVM',
+        fillcolor='maroon',
+        opacity=0.70
+    ))
+
+    fig_metrics_polar.add_trace(go.Scatterpolar(
+        r=[accuracy_rf, precision_rf, recall_rf, f1_rf, error_rf/100],
+        theta=['Acurácia', 'Precisão', 'Recall', 'F1-Score', 'Erro'],
+        fill=None,
+        name='Random Forest',
+        fillcolor='darkblue',
+        opacity=0.70
+    ))
+
+    fig_metrics_polar.add_trace(go.Scatterpolar(
+        r=[accuracy_lr, precision_lr, recall_lr, f1_lr, error_lr/100],
+        theta=['Acurácia', 'Precisão', 'Recall', 'F1-Score', 'Erro'],
+        fill=None,
+        name='Logistic Regression',
+        fillcolor='darkorange',
+        opacity=0.60
+    ))
+
+    fig_metrics_polar.add_trace(go.Scatterpolar(
+        r=[accuracy_knn, precision_knn, recall_knn, f1_knn, error_knn/100],
+        theta=['Acurácia', 'Precisão', 'Recall', 'F1-Score', 'Erro'],
+        fill=None,
+        name='KNN',
+        fillcolor='darkviolet',
+        opacity=0.70
+    ))
+
+    fig_metrics_polar.add_trace(go.Scatterpolar(
+        r=[accuracy_xgb, precision_xgb, recall_xgb, f1_xgb, error_xgb/100],
+        theta=['Acurácia', 'Precisão', 'Recall', 'F1-Score', 'Erro'],
+        fill=None,
+        name='XGBoost',
+        fillcolor='darkgreen',
+        opacity=0.70
+    ))
+
+    fig_metrics_polar.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                gridcolor='lightslategray',
+                tickcolor='lightslategray',
+                linecolor='#000000',
+                color='#000000',
+                visible=True,
+                range=[0, 1]
+            ),
+            ),
+        showlegend=True,
+        legend=dict(
+            orientation='v',
+            yanchor='top',
+            y=0.9,
+            xanchor='left',
+            x=0.8,
+        ),
+        title="Comparativo de Métricas dos Classificadores"
+    )
+
+    st.plotly_chart(fig_metrics_polar)
+   
 
 with st.expander("Playground", expanded=False):
     # Captura de valores numéricos para cada feature usando sliders
